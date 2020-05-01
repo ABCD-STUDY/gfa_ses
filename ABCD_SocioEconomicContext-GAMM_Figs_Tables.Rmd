@@ -1,0 +1,569 @@
+---
+title: "ABCD 2.0.1: SES"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+rm(list=ls())
+list.files()
+```
+
+```{r}
+
+####################
+####################
+## Load libraries ##
+####################
+####################
+library(ggplot2)
+library(ggExtra)
+library(gamm4)
+library(MASS)
+library(car)
+library(dplyr)
+library(TOSTER)
+library(forcats)
+library(QuantPsyc)
+library(data.table)
+library(reshape2)
+library(psych)
+library(Hmisc)
+library(corrplot)
+library(ggcorrplot)
+library(mgcv)
+library(tableone)
+library(dvmisc)
+library(graphics)
+library(kableExtra)
+library(gridExtra)
+library (RColorBrewer)
+library (extrafont)
+```
+
+
+```{r}
+#########################################
+#Merge the GFA latent factor results with covariates
+############################################3
+data_all<-cbind.data.frame(myGFA,all_df_complete)
+
+```
+
+```{r}
+
+
+demo_df <- data.frame(data_all$age/12,data_all$sex,data_all$race.ethnicity)
+
+CreateTableOne(data=demo_df)
+CreateTableOne(data=subset(demo_df,data_all$poverty_index<50))
+CreateTableOne(data=subset(demo_df,data_all$poverty_index>=50&data_all$poverty_index<100))
+CreateTableOne(data=subset(demo_df,data_all$poverty_index>=100&data_all$poverty_index<200))
+CreateTableOne(data=subset(demo_df,data_all$poverty_index>=200&data_all$poverty_index<400))
+CreateTableOne(data=subset(demo_df,data_all$poverty_index>=400))
+```
+
+```{r}
+##############################
+#Scale variables and recode
+##############################
+
+my_df <-data_all
+my_df$income2needs<-my_df$poverty_index
+my_df$income2needs_scale<-scale(my_df$poverty_index)
+my_df$income2needs_log<-log(my_df$poverty_index)
+my_df$age<-scale(my_df$age)
+my_df$income2needs_log<-scale(my_df$income2needs_log)
+
+my_df$area_total<-scale(my_df$area_total)
+my_df$nih_total<-scale(my_df$nih_total)
+
+my_df$high.educ<-scale(my_df$high.educ)
+my_df$parent_negative_behav<-scale(my_df$parent_negative_behav)
+my_df$traumatic_event<-scale(my_df$traumatic_event)
+my_df$prenatal_cond<-scale(my_df$prenatal_cond)
+my_df$maternal_age_birth<-scale(my_df$maternal_age_birth)
+my_df$birth_weight_kg<-scale(my_df$birth_weight)
+my_df$GestAge<-scale(my_df$GestAge)
+my_df$prenatal_drug_use<-scale(my_df$prenatal_drug_use)
+my_df$range_sleep<-scale(my_df$range_sleep)
+my_df$family_conflict<-scale(my_df$family_conflict)
+my_df$crpbi_ss_studycaregiver<-scale(my_df$crpbi_ss_studycaregiver)
+my_df$school_engagement<-scale(my_df$school_engagement)
+my_df$positive_school_env<-scale(my_df$positive_school_env)
+my_df$neighb_safety_y<-scale(my_df$neighb_safety_y)
+my_df$parental_monitoring_youth<-scale(my_df$parental_monitoring_youth)
+
+########################################################################
+# Create categories for Federal Poverty Thresholds
+########################################################################
+test_df<-my_df
+test_df$FPL_5<-NA
+test_df$FPL_5<-data_all$poverty_index
+test_df$FPL_5 [which(test_df$poverty_index<50)]<- "Deep Poverty (<50%)"
+test_df$FPL_5 [which(test_df$poverty_index>=50&test_df$poverty_index<100)]<- "Poverty (50% - <100%)"
+test_df$FPL_5 [which(test_df$poverty_index>=100&test_df$poverty_index<200)]<- "Near Poverty (100% - <200%)"
+test_df$FPL_5 [which(test_df$poverty_index>=200&test_df$poverty_index<400)]<- "Mid Income (200% - <400%)"
+test_df$FPL_5 [which(test_df$poverty_index>=400)]<- "High Income (>=400%)"
+test_df$FPL_5<-ordered(as.factor(test_df$FPL_5),levels=c("Deep Poverty (<50%)","Poverty (50% - <100%)","Near Poverty (100% - <200%)","Mid Income (200% - <400%)","High Income (>=400%)"))
+
+
+```
+
+```{r}
+
+#DV<-c(names(ACEs[1,]),names(COMMUNITY[1,]),names(ECONOMIC[1,]),names(PERINATAL[1,]),names(PARENTING[1,]),names(PHYSIOLOGICAL[1,]))
+
+#DV_labels<-c(ace_vars,community_vars,economic_vars,prenatal_vars,parenting_vars,physical_vars)
+
+DV<-c("RGFA1","RGFA2","RGFA3")
+DV_labels<-c("Latent Factor 1","Latent Factor 2","Latent Factor 3")
+
+##########################################################
+## Effect size plots for income effects on all variables
+#########################################################
+my_matrix<-matrix(nrow=length(DV),ncol=6)
+colnames(my_matrix)<-c("DV","Income-to-Needs Beta Coefficient","LowerCI","UpperCI","P-value","Effect Size (Change in R2)")
+matrow=1
+for (var in DV)
+{
+my_model <- gamm4 (as.formula(paste(var,"income2needs_scale+age+sex+race.ethnicity",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =test_df)
+#print(summary(my_model$gam))
+CI= (confint(my_model$gam,level=0.95))
+
+my_model2 <- gamm4 (as.formula(paste(var,"age+sex+race.ethnicity",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =test_df)
+#print(summary(my_model$gam))
+changeRsqr_1_2 <- summary(my_model$gam)$r.sq-summary(my_model2$gam)$r.sq
+
+CI= (confint(my_model$gam,level=0.95))
+my_matrix[matrow,]<- c(var,round(summary(my_model$gam)$p.coeff[2],3),round(CI[2,1],3),round(CI[2,2],3),summary(my_model$gam)$p.table[2,4],round(changeRsqr_1_2,3))
+matrow<-matrow+1
+}
+
+
+my_std <-data.frame(DV_labels,as.numeric(my_matrix[,2]),as.numeric(my_matrix[,3]),as.numeric(my_matrix[,4]))
+colnames(my_std)<-c("DV","stbeta","CI05","CI95")
+
+my_std$Dv_labels<-ordered(my_std$Dv_labels,c("RGFA1","RGFA2","RGFA3"))
+
+#my_std$DV <-reorder(my_std$DV,my_std$stbeta)
+  
+ggplot(my_std, aes(DV,stbeta,ymin=CI05,ymax=CI95)) +geom_pointrange(size=0.25,fill="white",shape=1) +labs(title=" Income-to-needs Standard Beta Coefficients", y="",x="Dependedent Variable")+ theme(axis.text.x = element_text(size=11,angle=60,hjust=1), axis.text.y = element_text(size=11))+geom_hline(yintercept=0,lty=3)+coord_flip()+theme_bw()
+
+
+```
+
+```{r}
+
+#interaction
+test_df_temp<-test_df
+test_df_temp$FPL_5<-factor(as.numeric(test_df_temp$FPL_5))
+test_df_temp$FPL_5<-relevel (test_df_temp$FPL_5, ref="5")
+
+myvars<-c("nih_total","area_total")
+
+
+for (var in myvars){
+my_model2 <- gamm4 (as.formula(paste(var,"RGFA1+FPL_5+age+sex+race.ethnicity+RGFA1*FPL_5",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =test_df_temp)
+#print(summary(my_model2$gam))
+
+my_model1 <- gamm4 (as.formula(paste(var,"RGFA1+FPL_5+age+sex+race.ethnicity",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =test_df_temp)
+#print(summary(my_model1$gam))
+
+
+print(anova(my_model1$mer, my_model2$mer))
+changeRsqr <- summary(my_model2$gam)$r.sq-summary(my_model1$gam)$r.sq
+print (changeRsqr)
+}
+```
+
+
+```{r}
+################
+# Best Model Income Term
+# income-to-needs
+# log(income-to-needs)
+# smooth(income-to-needs)
+###############
+
+ modSES1<-gamm4 (area_total~age+sex+race.ethnicity, random = ~(1|scannerID/rel_family_id), data =test_df)
+modSES2<-gamm4 (area_total~s(income2needs_scale)+age+sex+race.ethnicity, random = ~(1|scannerID/rel_family_id), data =test_df)
+anova(modSES2$mer,modSES1$mer)
+p1<-plot(modSES2$gam,xlab="income-to-need",ylab="s(income-to-need,3.77)",family="Helvetica",cex.lab=1.5, cex.axis=1,main="Total Cortical Surface Area")
+
+changeRsqr <- summary(modSES2$gam)$r.sq-summary(modSES1$gam)$r.sq
+print (changeRsqr)
+summary(modSES2$gam)
+
+ modSES1<-gamm4 (nih_total~age+sex+race.ethnicity, random = ~(1|scannerID/rel_family_id), data =test_df)
+modSES2<-gamm4 (nih_total~s(income2needs_scale)+age+sex+race.ethnicity, random = ~(1|scannerID/rel_family_id), data =test_df)
+anova(modSES2$mer,modSES1$mer)
+summary(modSES2$gam)
+
+p2<-plot(modSES2$gam,xlab="income-to-need",ylab="s(income-to-need,6.43)",family="Helvetica",cex.lab=1.5, cex.axis=1,main="Total Cognition Scores")
+
+changeRsqr <- summary(modSES2$gam)$r.sq-summary(modSES1$gam)$r.sq
+print (changeRsqr)
+
+
+```
+
+```{r}
+
+####### income effects on outcome variables
+
+GFAs<-c("nih_total","area_total")
+for (var in GFAs)
+{
+my_model <- gamm4 (as.formula(paste(var,"s(income2needs_scale)+age+sex+race.ethnicity",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =test_df)
+print(summary(my_model$gam))
+#print(confint(my_model$gam,level=0.90))
+plot(my_model$gam,all.terms=TRUE, rug=FALSE)
+
+my_model1 <- gamm4 (as.formula(paste(var,"age+sex+race.ethnicity",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =test_df)
+#print(summary(my_model1$gam))
+
+print(anova(my_model1$mer, my_model$mer))
+#print(summary(my_model$gam)$r.sq-summary(my_model1$gam)$r.sq)
+
+}
+
+
+```
+
+```{r}
+
+####### income effects on all variables that went into the GFA 
+
+GFAs<-c("RGFA1","RGFA2","RGFA3")
+for (var in GFAs)
+{
+my_model <- gamm4 (as.formula(paste(var,"s(income2needs_scale)+age+sex+race.ethnicity",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =test_df)
+print(summary(my_model$gam))
+#print(confint(my_model$gam,level=0.90))
+
+my_model1 <- gamm4 (as.formula(paste(var,"age+sex+race.ethnicity",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =test_df)
+#print(summary(my_model1$gam))
+
+print(anova(my_model1$mer, my_model$mer))
+print(summary(my_model$gam)$r.sq-summary(my_model1$gam)$r.sq)
+}
+
+
+
+```
+
+```{r}
+####### Effect sizes for Latent Factors on Cogntion and Surface Area ######
+######## Figure 3 ##########
+#########
+#mydir<- [insert your folder path]
+#setwd(mydir)
+
+M_std<-matrix(nrow=24, ncol=5)
+r2_matrix<-matrix(nrow=2,ncol=5)
+
+DV_brain <- c("area_total","nih_total")
+DV_labels<-c("Total Cortical Surface Area", "NIH Toolbox Total Cognition")
+colnames(M_std)<-c("DV","Beta","IV","LowCI","UppCI")
+matrow=1
+matrow_r2=1
+
+count=1
+for( dv_var in DV_brain) 
+  {
+#
+  modnull <- gamm4(as.formula(paste(dv_var,"age+sex+race.ethnicity",sep="~"))
+                   ,random = ~(1|scannerID/rel_family_id), data =test_df)
+   modSES <- gamm4(as.formula(paste(dv_var,"s(income2needs_scale)+age+sex+race.ethnicity",sep="~"))
+                   ,random = ~(1|scannerID/rel_family_id), data =test_df)
+  modSES1 <- gamm4(as.formula(paste(dv_var,"s(income2needs_scale)+RGFA1+age+sex+race.ethnicity",sep="~"))
+                   ,random = ~(1|scannerID/rel_family_id), data =test_df)
+  print(summary(modSES1$gam))
+  
+    modSES2 <- gamm4(as.formula(paste(dv_var,"s(income2needs_scale)+RGFA2+age+sex+race.ethnicity",sep="~"))
+                   ,random = ~(1|scannerID/rel_family_id), data =test_df)
+     print(summary(modSES2$gam))
+  
+print(summary(modSES2$gam))
+    modSES3 <- gamm4(as.formula(paste(dv_var,"s(income2needs_scale)+RGFA3+age+sex+race.ethnicity",sep="~"))
+                   ,random = ~(1|scannerID/rel_family_id), data =test_df)
+     print(summary(modSES3$gam))
+     
+         modSES4 <- gamm4(as.formula(paste(dv_var,"s(income2needs_scale)+RGFA1+RGFA2+RGFA3+age+sex+race.ethnicity",sep="~"))
+                   ,random = ~(1|scannerID/rel_family_id), data =test_df)
+     print(summary(modSES4$gam))
+  
+  
+
+    r1=summary(modSES$gam)$r.sq-summary(modnull$gam)$r.sq
+    r2=summary(modSES1$gam)$r.sq-summary(modnull$gam)$r.sq
+    r3=summary(modSES2$gam)$r.sq-summary(modnull$gam)$r.sq
+    r4=summary(modSES3$gam)$r.sq-summary(modnull$gam)$r.sq
+    r5=summary(modSES4$gam)$r.sq-summary(modnull$gam)$r.sq
+    
+    r2_matrix[matrow_r2,]<-c(r1,r2,r3,r4,r5)  
+   
+    matrow_r2<-matrow_r2+1
+    
+  CI= (confint(modSES$gam,level=0.95))
+    CI1= (confint(modSES1$gam,level=0.95))
+    CI2= (confint(modSES2$gam,level=0.95))
+    CI3= (confint(modSES3$gam,level=0.95))
+
+#M_std[matrow,]<- c(DV_labels[which(DV_brain==dv_var)],summary(modSES$gam)$p.coeff[2],"Model 1: Income-to-needs (Log)",CI[2,1],CI[2,2])
+#matrow<-matrow+1
+M_std[matrow,]<- c(DV_labels[which(DV_brain==dv_var)],summary(modSES1$gam)$p.coeff[2],"Model 2: Latent Factor 1",CI1[2,1],CI1[2,2])
+matrow<-matrow+1
+M_std[matrow,]<-c(DV_labels[which(DV_brain==dv_var)],summary(modSES2$gam)$p.coeff[2],"Model 3: Latent Factor 2",CI2[2,1],CI2[2,2])
+matrow<-matrow+1
+M_std[matrow,]<-c(DV_labels[which(DV_brain==dv_var)],summary(modSES3$gam)$p.coeff[2],"Model 4: Latent Factor 3",CI3[2,1],CI3[2,2])
+matrow<-matrow+1
+
+}
+
+my_std <-data.frame(dv=M_std[,1], iv=M_std[,3],stbeta=round(as.numeric(M_std[,2]),3),CI05=round(as.numeric(M_std[,4]),2),CI95=round(as.numeric(M_std[,5]),2))
+my_std$iv<-ordered(my_std$iv,c("Model 4: Latent Factor 3","Model 3: Latent Factor 2","Model 2: Latent Factor 1","Model 1: Income-to-needs (Log)"))
+
+
+my_df<-data.frame(my_std[1:8,])
+
+
+ggplot(my_df, aes(iv,stbeta,ymin=CI05,ymax=CI95))+ labs(title="", y="Standardized Beta",x="")+geom_pointrange(size=1,fill="white",shape=1,stroke=2,fatten=.2) +theme_bw()+ theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=9), axis.title.y=element_text(size=9))+geom_hline(yintercept = 0,linetype="dashed")+coord_flip()+facet_grid(.~dv,scales = "free")+ylim(-0.1,0.3)
+
+labels<-c("Income-to-needs","Latent Factor 1 + Income-to-needs","Latent Factor 2 + Income-to-needs","Latent Factor 3 + Income-to-needs")
+
+#df<-data.frame(my_r2_change=r2_matrix[1,],labels)
+df<-data.frame(task=c("Total Cortical Surface Area","Total Cognition Scores","Total Cortical Surface Area","Total Cognition Scores","Total Cortical Surface Area","Total Cognition Scores","Total Cortical Surface Area","Total Cognition Scores","Total Cortical Surface Area","Total Cognition Scores"),r2=c(r2_matrix),model=c("Model 1: s(Income-to-needs)","Model 1: s(Income-to-needs)","Model 2: Latent Factor 1 + s(Income-to-needs)","Model 2: Latent Factor 1 + s(Income-to-needs)","Model 3: Latent Factor 2 + s(Income-to-needs)","Model 3: Latent Factor 2 + s(Income-to-needs)","Model 4: Latent Factor 3 + s(Income-to-needs)","Model 4: Latent Factor 3 + s(Income-to-needs)","Model 5: s(Income-to-needs) + Latent Factor 1 + 2 + 3","Model 5: s(Income-to-needs) + Latent Factor 1 + 2 + 3"))
+df$task<-ordered(as.factor(df$task),levels=c("Total Cortical Surface Area","Total Cognition Scores"))
+
+scaleFUN <- function(x) sprintf("%.1f", x)
+
+abcd_SES_effect_size<-ggplot(data=df)+geom_col(alpha=0.8,aes(model,r2*100,fill=model))+theme_minimal()+facet_wrap(~task,strip.position="top")+theme(text= element_text(family="Arial",size=16),axis.text.x = element_text(angle=60, hjust=1,family="Arial",size=16),axis.text.y = element_text(hjust=1,family="Arial",size=16),legend.position = "none",strip.text = element_text(size = 16,family="Arial"))+xlab(" ")+ylab((expression(Delta ~R^{"2"}~ "(%)")))+scale_fill_brewer(palette="Spectral",direction=1)+scale_y_continuous(labels=scaleFUN)
+
+ggsave(abcd_SES_effect_size,  file="abcd_SES_effect_size.tiff", width = 13, height = 14, units = "in", dpi = 300)
+
+
+```
+
+
+
+```{r}
+#mydir<- [insert your folder path]
+#setwd(mydir)
+
+# # # # # # # # # # 
+# FIGURE 1
+# # # # # # # # # 
+data_all$FPL5<-test_df$FPL_5
+data_all$FPL4<-test_df$FPL_4
+
+brewer.pal(6, "GnBu")
+#font_import()
+
+#mydir<- [insert your folder path]
+#setwd(mydir)
+fancy_scientific <- function(l) {
+     # turn in to character string in scientific notation
+     l <- format(l, scientific = TRUE)
+     # quote the part before the exponent to keep all the digits
+     l <- gsub("^(.*)e", "'\\1'e", l)
+     # turn the 'e+' into plotmath format
+     l <- gsub("e", "%*%10^", l)
+     # return this as an expression
+     parse(text=l)
+}
+
+plot1<-ggplot(data=data_all,aes(poverty_index,area_total))+geom_point(aes(color=data_all$FPL5),size=.6,shape=22,stroke=.75,fill="black")+stat_smooth(method="gam",formula= y~s(x,bs="cs",k=10),colour="black", size=1.2)+theme_classic()+xlab("Income-to-Needs (%)")+ ylab("Total Cortical Surface Area (mm^2)")+theme(text = element_text(family="Arial",size=16),axis.text.x = element_text(angle=60, hjust=1,family="Arial",size=16),axis.text.y = element_text(hjust=1,family="Arial",size=16),legend.position = "none")+scale_x_continuous(breaks=c(50,100,200,400,1500))+geom_vline(xintercept=400,color="black",linetype="dashed",alpha=0.8)+geom_vline(xintercept=200,color="black",linetype="dashed",alpha=0.8)+labs(colour="")+scale_color_brewer(type='seq',palette="RdYlBu",direction=1)+scale_y_continuous(labels=fancy_scientific)
+
+plot2<-ggplot(data=data_all,aes(poverty_index, nih_total))+geom_point(aes(color=data_all$FPL5),size=.6,shape=22,stroke=.75,fill="black")+stat_smooth(method="gam",formula= y ~s(x,bs="cs",k=10),colour="black", size=1.2)+theme_classic()+xlab("Income-to-Needs (%)")+ ylab("Total Cognition Scores")+theme(text = element_text(family="Arial",size=16),axis.text.x = element_text(angle=60, hjust=1,family="Arial",size=16),axis.text.y = element_text(hjust=1,family="Arial",size=16), legend.text = element_text(size=12, family="Arial"))+scale_x_continuous(breaks=c(50,100,200,400,1500))+geom_vline(xintercept=400,color="black",linetype="dashed",alpha=0.8)+geom_vline(xintercept=200,color="black",linetype="dashed",alpha=0.8)+labs(colour="")+scale_color_brewer(type='seq',palette="RdYlBu",direction=1)
+
+
+get_legend<-function(myggplot){
+  tmp <- ggplot_gtable(ggplot_build(myggplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
+
+legend<-get_legend(plot2)
+plot2<-plot2+theme(legend.position="none")
+abcd_SES_curve<-grid.arrange(plot1, plot2,legend,ncol=3,widths=c(1, 1,0.5))
+
+ggsave(abcd_SES_curve,  file="abcd_SES_curve.tiff", width = 14, height = 6, units = "in", dpi = 300)
+
+
+
+# # # # # # # # # # # # # # 
+#Figure 4
+#Interaction
+# # # # # # # # # # # # # # 
+
+abcd_SES_interaction<-ggplot(data=data_all,aes(RGFA1,nih_total,col=FPL5))+geom_point(size=.6,shape=22,stroke=.75,fill="black",alpha=0.7)+stat_smooth(size=1.2)+theme_classic()+xlab("Latent Factor 1 Scores")+ ylab("Total Cognition Scores")+theme(text = element_text(family="Arial",size=16),axis.text.x = element_text(size=16,family="Arial"),axis.text.y = element_text(hjust=1,size=16,family="Arial"),legend.text = element_text(size=12,family="Arial"))+labs(colour="")+scale_color_brewer(type='seq',palette="RdYlBu",direction=1)+scale_x_continuous(breaks=c(-4,-3,-2,-1,0,1,2))
+
+
+ggsave(abcd_SES_interaction,  file="abcd_SES_interaction.tiff", width = 8, height = 6, units = "in", dpi = 300)
+
+
+
+########## ########## ########## ########## 
+########## Tables with Beta Values and CIs for models
+########## ########## ########## ########## 
+
+M_cognition<-matrix(nrow=42, ncol=7)
+M_area<-matrix(nrow=42, ncol=7)
+colnames(M_cognition)<-c("Variable","Null Model Cogntion","Income Model - Cognition", "RGFA1 - Cognition","RGFA2 - Cognition","RGFA3 - Cognition","ALL FACTORS - Area")
+colnames(M_area)<-c("Variable","Null Model Area","Income Model - Area", "RGFA1 - Area","RGFA2 - Area","RGFA3 - Area","ALL FACTORS - Area")
+
+
+#Toggle
+my_matrix<-M_area
+dv_var<-"area_total"
+#my_matrix<-M_cognition
+#dv_var<-"nih_total"
+
+
+  modSES <- gamm4(as.formula(paste(dv_var,"age+sex+race.ethnicity",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =test_df)
+  print (summary(modSES$gam))
+
+  modSES1 <- gamm4(as.formula(paste(dv_var,"s(income2needs_scale)+age+sex+race.ethnicity",sep="~")),random = ~(1|scannerID/rel_family_id), data =test_df)
+  print (summary(modSES1$gam))
+  
+  modSES2 <- gamm4(as.formula(paste(dv_var,"RGFA1+s(income2needs_scale)+age+sex+race.ethnicity",sep="~")),random = ~(1|scannerID/rel_family_id), data =test_df)
+  print (summary(modSES2$gam))
+  
+  modSES3 <- gamm4(as.formula(paste(dv_var,"RGFA2+s(income2needs_scale)+age+sex+race.ethnicity",sep="~")),random = ~(1|scannerID/rel_family_id), data =test_df)
+  print (summary(modSES3$gam))
+
+  modSES4 <- gamm4(as.formula(paste(dv_var,"RGFA3+s(income2needs_scale)+age+sex+race.ethnicity",sep="~")),random = ~(1|scannerID/rel_family_id), data =test_df)
+  print (summary(modSES4$gam))
+  
+    modSES5 <- gamm4(as.formula(paste(dv_var,"RGFA1+RGFA2+RGFA3+s(income2needs_scale)+age+sex+race.ethnicity",sep="~")),random = ~(1|scannerID/rel_family_id), data =test_df)
+  print (summary(modSES5$gam))
+
+
+
+  CI= (confint(modSES$gam,level=0.95))
+  CI_1=(confint(modSES1$gam,level=0.95))
+  CI_2= (confint(modSES2$gam,level=0.95))
+  CI_3= (confint(modSES3$gam,level=0.95))
+  CI_4= (confint(modSES4$gam,level=0.95))
+  CI_5= (confint(modSES5$gam,level=0.95))
+
+  models_anova_1_0 <-anova(modSES1$mer,modSES$mer)
+  models_anova_2_0 <-anova(modSES2$mer,modSES$mer)
+  models_anova_3_0 <-anova(modSES3$mer,modSES$mer)
+  models_anova_4_0 <-anova(modSES4$mer,modSES$mer)
+  models_anova_5_0 <-anova(modSES5$mer,modSES$mer)
+
+  print(models_anova_1_0)
+  print(models_anova_2_0)
+  print(models_anova_3_0)
+  print(models_anova_4_0)
+  print(models_anova_5_0)
+  
+  changeRsqr_1_0 <- summary(modSES1$gam)$r.sq-summary(modSES$gam)$r.sq
+  changeRsqr_2_0 <- summary(modSES2$gam)$r.sq-summary(modSES$gam)$r.sq
+  changeRsqr_3_0 <- summary(modSES3$gam)$r.sq-summary(modSES$gam)$r.sq
+  changeRsqr_4_0 <- summary(modSES4$gam)$r.sq-summary(modSES$gam)$r.sq
+  changeRsqr_5_0 <- summary(modSES5$gam)$r.sq-summary(modSES$gam)$r.sq
+
+  
+  print(paste(dv_var," Null model R2=",summary(modSES$gam)$r.sq))
+  print(paste(dv_var," income only model R2 change=",changeRsqr_1_0))
+  print(paste(dv_var," RGFA1 model R2 change=",changeRsqr_2_0))
+  print(paste(dv_var," RGFA2 model R2 change=",changeRsqr_3_0))
+  print(paste(dv_var," RGFA3 model R2 change=",changeRsqr_4_0))
+  print(paste(dv_var," All Latent Factors model R2 change=",changeRsqr_5_0))
+  
+  
+
+matrow=1
+matcol=1
+
+
+#First Row  
+#my_matrix[matrow,]<-c("R2",round(summary(modSES$gam)$r.sq,3),round(summary(modSES1$gam)$r.sq,3),round(summary(modSES2$gam)$r.sq,3),round(summary(modSES3$gam)$r.sq,3),round(summary(modSES4$gam)$r.sq,3))
+
+#Second Row
+#my_matrix[matrow+1,]<-c("ChangeR2","--",round(changeRsqr_1_0,3),round(changeRsqr_2_0,3),round(changeRsqr_3_0,3),round(changeRsqr_4_0,3))
+
+#Third Row  
+#my_matrix[matrow+2,]<-c("ChiSqr","--",round(models_anova_1_0$Chisq[2],3),round(models_anova_2_0$Chisq[2],3),round(models_anova_3_0$Chisq[2],3),round(models_anova_4_0$Chisq[2],3))
+ 
+
+  
+# Fill Null model
+matcol<-matcol+1    
+  for (index in 2:length(CI[,1]))
+       {
+         my_matrix[matrow+1,matcol]<-c(paste0(round(summary(modSES$gam)$p.coeff[index],3)," (",round(CI[index,1],3),", ",round(CI[index,2],3),")"))
+         matrow<-matrow+1 
+  }
+
+#Fill Income only Model    
+matrow<-1
+matcol<-matcol+1
+#Length of CI_1 since we do not want CI for smooth terms yet
+    for (index in 2:(length(CI_1[,1])-9))
+       {
+         my_matrix[matrow+1,matcol]<-c(paste0(round(summary(modSES1$gam)$p.coeff[index],3)," (",round(CI_1[index,1],3),", ",round(CI_1[index,2],3),")"))
+         matrow<-matrow+1 
+    }
+
+matrow<-1
+matcol<-matcol+1
+    for (index in 2:(length(CI_2[,1])-9))
+       {
+         my_matrix[matrow,matcol]<-c(paste0(round(summary(modSES2$gam)$p.coeff[index],3)," (",round(CI_2[index,1],3),", ",round(CI_2[index,2],3),")"))
+         matrow<-matrow+1 
+    }
+
+matrow<-1
+matcol<-matcol+1
+    for (index in 2:(length(CI_3[,1])-9))
+       {
+         my_matrix[matrow,matcol]<-c(paste0(round(summary(modSES3$gam)$p.coeff[index],3)," (",round(CI_3[index,1],3),", ",round(CI_3[index,2],3),")"))
+         matrow<-matrow+1 
+    }
+
+matrow<-1
+matcol<-matcol+1
+    for (index in 2:(length(CI_4[,1])-9))
+       {
+         my_matrix[matrow,matcol]<-c(paste0(round(summary(modSES4$gam)$p.coeff[index],3)," (",round(CI_4[index,1],3),", ",round(CI_4[index,2],3),")"))
+         matrow<-matrow+1 
+    }
+
+matrow<-1
+matcol<-matcol+1
+    for (index in 2:(length(CI_5[,1])-9))
+       {
+         my_matrix[matrow,matcol]<-c(paste0(round(summary(modSES5$gam)$p.coeff[index],3)," (",round(CI_5[index,1],3),", ",round(CI_5[index,2],3),")"))
+         matrow<-matrow+1 
+    }
+
+#Set the variable names in the first column of the matrix
+my_matrix[1,1]<-c("Latent Factor")
+
+my_matrix[2:35,1]<-c(row.names(summary(modSES$gam)$p.table)[2:35])  
+
+my_table1<-data.frame(my_matrix)
+kable(my_table1) %>%
+  kable_styling()
+
+``` 
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+
+
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+

@@ -1,0 +1,281 @@
+---
+title: "GFA SES"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+# Example Libraries to use:
+library(psych)
+#library(tableone)
+#library(glmnet)
+library(MASS)
+# library(mice)
+library(ggplot2)
+library(gridExtra)
+library(scales)
+#library(vcd)
+library(GFA)
+library(Hmisc)
+library(gtools)
+library(RColorBrewer)
+library(corrplot)
+library(ggcorrplot)
+library(data.table)
+#library(VIM)
+
+#Wes' Libraries:
+#library(plotly)
+library(plotrix)
+library(gamm4)
+
+# Library to visualize Mixed Effects Models:
+#library(merTools)
+
+# To produce nice tables:
+# https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library(MatchIt)
+library(Hmisc)
+
+```
+
+
+```{r}
+
+#RUN THE GFA
+MY <- list(PERINATAL,ACEs,PARENTING,PHYSIOLOGICAL,COMMUNITY,ECONOMIC)
+
+#MY <- list(PERINATAL_r,ACEs_r,PARENTING_r,PHYSIOLOGICAL_r,COMMUNITY_r,ECONOMIC_r)
+
+acevars<-ace_vars
+communityvars<-community_vars
+prenatalvars<-prenatal_vars
+economicvars <-economic_vars
+parentingvars <-parenting_vars
+physicalvars<-physical_vars
+
+  mynorm <- normalizeData(MY, type="scaleFeatures")
+  
+  # Get the default options
+  opts <- getDefaultOpts()
+  opts$vrbose <- 0
+  # number of data for posterior vector:
+  opts$iter.saved = 100
+  startK = length(c(acevars,communityvars,economicvars,prenatalvars,parentingvars,physicalvars))
+  # Run the GFA:
+  
+#mydir<-"Your directory Path"
+
+  # File components:
+  myfile <- c("ABCD_GFAr_")
+  GFAtext <- c("SES_final_2.0.1")
+   dateext <- c("_11062019")
+
+
+  set.seed(123);
+  
+  #res <- gfa(mynorm$train, K=startK, opts=opts)
+  
+  res <- list()
+  for(i in 1:10){
+    print(i)
+    myall <- paste0(mydir,myfile,GFAtext,i,dateext,".RData",sep="")
+    print(myall)
+    
+    res[[i]] <- gfa(mynorm$train, K=startK, opts=opts)
+    
+    # Save as an interim variable
+    myres <- res[[i]]
+    
+    # Save the GFA results
+    # Write the result to a file
+   myall <- paste0(mydir,myfile,GFAtext,i,dateext,".RData",sep="")
+    save(myres, file=myall)
+  }
+  
+  myall <- paste0(mydir,myfile,GFAtext,"ALLRes10",dateext,".RData",sep="")
+  #save(res, file=myall)
+  load(myall)
+  block.names=c("Perinatal", "ACEs", "Parental", "Physiological", "Community", "Economic")
+```
+
+
+```{r}
+ # repeated GFA outputs
+#Load res again if needed
+#res_rob_ses <- list()
+#for(i in 1:10){
+#myall <- paste0(mydir,myfile,GFAtext,i,dateext,".RData",sep="")
+#load(myall)
+#res_rob_ses[[i]] <- myres
+#}
+
+#res<-res_rob_ses
+#myall <- paste0(mydir,myfile,GFAtext,"ALLRes10",dateext,".RData",sep="")
+#save(res, file=myall)
+#load(myall)
+
+summ <- w_rob(res,corThr=0.9, matchThr=0.9,var.exp=TRUE, conf.level=0.95, heatmap.rep=TRUE, sparse=TRUE, forest=TRUE, block.names)
+
+  
+  # Save the Robust Assessment
+  myall <- paste0(mydir,myfile,GFAtext,"Robust10",dateext,".RData",sep="")
+  #save(summ, file = myall)
+  load(myall)
+  # Save my variance
+  #myvariance <- rob.var.exp(res,summ$rob)
+  
+  myall <- paste0(mydir,myfile,GFAtext,"Variance10",dateext,".RData",sep="")
+  #save(myvariance, file = myall)
+  load(myall)
+  
+  # Get Average and SEM as well as Cumulative variance explained
+  mean_variance <- apply(myvariance$ve.rep,1,mean)
+  sem_variance <- apply(myvariance$ve.rep,1,std.error)
+  cum_variance <- cumsum(mean_variance)
+  
+  myprint <- print(data.frame(mean_variance,sem_variance,cum_variance),digits = 2)
+  
+  kable(myprint, "html",caption = "Robust GFA: Variance Explained",digits=c(2,2,2)) %>% kable_styling(bootstrap_options = c( "hover", "condensed", "responsive"),font_size = 11)
+```  
+
+
+
+```{r , Setting up the GFAs for  graphing, echo = FALSE, fig.height = 6, fig.width = 6 }
+###
+# Setting up GFA labels here:
+# Robust
+acevars<-ace_vars
+communityvars<-community_vars
+prenatalvars<-prenatal_vars
+economicvars <-economic_vars
+parentingvars <-parenting_vars
+physicalvars<-physical_vars
+
+GFAfactorlabels <- c("RGFA")
+
+allblocklabels <- c(acevars,prenatalvars,physicalvars,communityvars,economicvars,parentingvars)
+
+GFAselect <- colnames(summ$rob$indices)
+PlotNb = summ$rob$Krobust
+varacc <- rowMeans(myvariance$ve.rep)
+  
+myfactors <- paste(GFAfactorlabels, rep(1:length(GFAselect)), sep="")
+mytitles <- {}
+
+for(i in 1:length(GFAselect)){
+mytitles  <- cbind(mytitles,paste(GFAfactorlabels,i,": ",round(varacc[i],digits=2),"% Var.",sep=""))
+}
+
+
+GFAnumber <-0
+GFAvariables <- rep(c(prenatalvars,acevars,parentingvars,physicalvars,communityvars,economicvars), summ$rob$Krobust)
+GFAvarlabs <- rep(c(prenatalvars,acevars,parentingvars,physicalvars,communityvars,economicvars), summ$rob$Krobust)
+GFAgroups <- rep(c(rep("Prenatal",length(prenatalvars)),rep("ACEs",length(acevars)),rep("Parental",length(parentingvars)),rep("Physiological",length(physicalvars)),rep("School/Community",length(communityvars)), rep("Economic",length(economicvars))),summ$rob$Krobust)
+
+#myvalues <- array(0,c(res$D*res$K,3))
+myvalues <- array(0,c(length(allblocklabels)*summ$rob$Krobust,3))
+myvalues <- summ$w.ci.med[,c(3,4,5)]
+
+GFAlabels <- c("2.5% CI","Median","97.5% CI")
+colnames(myvalues)[1:3] <- c("CI025", "Median", "CI975")
+
+
+for(i in 1: summ$rob$Krobust){
+  for(j in 1: length(allblocklabels)){
+    GFAnumber[j+(i-1)*length(allblocklabels)] <- paste0(GFAfactorlabels,i)
+  }
+}
+
+
+myframe <-data.frame(GFAnumber,GFAgroups,GFAvarlabs,GFAvariables,myvalues)
+myframe$GFAvariables <- factor(myframe$GFAvariables, levels = c(allblocklabels))
+
+myGFA <- data.frame(summ$x.rob)
+colnames(myGFA) <- c(paste(GFAfactorlabels,1:summ$rob$Krobust,sep = ""))
+
+```
+
+```{r}
+# Table of Median loadings for all variables for each latent factor
+my_model<-subset(myframe,myframe$GFAnumber==myfactors[1:3])
+
+my_matrix<-matrix(nrow=length(myframe$GFAnumber),ncol=3)
+colnames(my_matrix)<-c("GFA","variables","Model")
+
+my_matrix[,1]<-paste0(myframe$GFAnumber)
+my_matrix[,2]<-paste0(myframe$GFAvarlabs)
+my_matrix[,3]<-paste0(round(myframe$Median,3)," (",myframe$CI025,", ",myframe$CI975,")")
+
+my_table1<-data.frame(my_matrix)
+kable(my_table1) %>%
+  kable_styling()
+```
+  
+
+```{r}
+# # # # # # # # # 
+# Figure 2 
+# # # # # # # # 
+setwd(mydir)
+
+my_titles<- c("Latent Factor 1 (13.68%)","Latent Factor 2 (6.5%)","Latent Factor 3 (5.91%)")
+
+plot1<-ggplot() +geom_pointrange(data=subset(myframe,GFAnumber==myfactors[1]), mapping=aes(GFAvariables, Median,ymin=CI025,ymax=CI975,colour=GFAgroups),shape=1,size=2,stroke=2,fatten=.5)+theme_linedraw() +theme(legend.position = "none",axis.text.x = element_text(hjust = 1,size=12, family="Arial"),title = element_text(size=12, family="Arial"),axis.text.y = element_text(hjust = 1,size=12, family="Arial"))+ggtitle(my_titles[1])  + geom_hline(yintercept = 0,linetype = "dashed",colour="black") + coord_flip()+labs(color="Variable Groups")+xlab(" ")
+
+plot2<-ggplot() +geom_pointrange(data=subset(myframe,GFAnumber==myfactors[2]), mapping=aes(GFAvariables, Median,ymin=CI025,ymax=CI975,colour=GFAgroups),shape=1,size=2,stroke=2,fatten=.5)+theme_linedraw() +theme(legend.position = "none",axis.text.x = element_text(hjust = 1,size=12, family="Arial"),title = element_text(size=12, family="Arial"),axis.text.y = element_blank())+ggtitle(my_titles[2])  + geom_hline(yintercept = 0,linetype = "dashed",colour="black") + coord_flip()+labs(color="Variable Groups")+xlab(" ")
+
+plot3<-ggplot() +geom_pointrange(data=subset(myframe,GFAnumber==myfactors[3]), mapping=aes(GFAvariables, Median,ymin=CI025,ymax=CI975,colour=GFAgroups),shape=1,size=2,stroke=2,fatten=.5)+theme_linedraw() +theme(axis.text.x = element_text(hjust = 1,size=12, family="Arial"),title = element_text(size=12, family="Arial"),axis.text.y =element_blank())+ggtitle(my_titles[3])  + geom_hline(yintercept = 0,linetype = "dashed",colour="black") + coord_flip()+labs(color="Variable Groups")+xlab(" ")
+
+
+get_legend<-function(myggplot){
+  tmp <- ggplot_gtable(ggplot_build(myggplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
+
+legend<-get_legend(plot3)
+plot3<-plot3+theme(legend.position="none")
+my_factors_SES<-grid.arrange(plot1, plot2, plot3, ncol=3,widths=c(2,1,1))
+
+ggsave(my_factors_SES,  file="my_factors_SES.tiff", width = 12, height = 6, units = "in", dpi = 300)
+
+
+```
+
+```{r}
+
+my_model<-subset(myframe,myframe$GFAnumber==myfactors[1]|myframe$GFAnumber==myfactors[2]|myframe$GFAnumber==myfactors[3])
+
+my_matrix<-matrix(nrow=length(my_model$GFAnumber),ncol=3)
+colnames(my_matrix)<-c("Latent Factor","Variables","RGFA - Split half 1")
+
+my_matrix[,1]<-paste0(my_model$GFAnumber)
+my_matrix[,2]<-paste0(my_model$GFAvarlabs)
+my_matrix[,3]<-paste0(my_model$Median," (",my_model$CI025,", ",my_model$CI975,")")
+
+my_table1<-data.frame(my_matrix)
+kable(my_table1) %>%
+  kable_styling()
+```
+
+```{r, GFA circular plots ,fig.height = 14, fig.width = 14}
+
+for(i in 1:4){
+  # reorder with the match trick here:
+  mycircdata <- subset(myframe,GFAnumber==myfactors[i])
+  mynew <- mycircdata[match(c(prenatalvars,socialvars,economicvars),mycircdata$GFAvariables),]
+  # Generate the circbars here:
+  mycirc <- Circbar(mynew,3,mytitles[i])
+  print(mycirc)
+}
+
+```
+

@@ -1,0 +1,771 @@
+---
+title: "Marybel GFA SES (non-robust)"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+# Example Libraries to use:
+library(psych)
+library(MASS)
+library(ggplot2)
+library(gridExtra)
+library(scales)
+library(GFA)
+library(Hmisc)
+library(gtools)
+library(RColorBrewer)
+library(corrplot)
+library(ggcorrplot)
+library(data.table)
+
+library(gamm4)
+
+# To produce nice tables:
+# https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library(MatchIt)
+library(Hmisc)
+
+library (rio)
+```
+
+```{r}
+###################
+# Read Data File containing NDA 2.0.1 data 
+###################
+
+rm(list=ls())
+list.files()
+
+#mydir<- [insert your folder path]
+#setwd(mydir)
+
+#File not provided, must donwload NDA data and compile 
+nda18 = readRDS("nda2.0.1.Rds")
+
+blIND=grep("baseline_year_1_arm_1",nda18$eventname)
+y1IND=grep("1_year_follow_up_y_arm_1",nda18$eventname)
+y2IND=grep("2_year_follow_up_y_arm_1",nda18$eventname)
+```
+
+
+```{r}
+########################
+# Variables & Groups
+#######################
+########################
+# Variables & Groups
+#######################
+
+######################
+# CDC BMI
+######################
+#mydir<- [insert your folder path]
+#setwd(mydir)
+
+#mydata<-data.frame(src_subject_id=nda18$src_subject_id,agemos=nda18$age, sex=nda18$sex,height= nda18$anthro_height_calc*2.54, weight=nda18$anthro_weight_calc*0.453592)
+
+#mydata$weight[which(mydata$weight==0)]<-NA
+#mydata$height[which(mydata$height==0)]<-NA
+
+#mydata$sex<-as.character(mydata$sex)
+#mydata$sex [which(mydata$sex=="M")]<-1
+#mydata$sex [which(mydata$sex=="F")]<-2
+#mydata$sex<-as.numeric(mydata$sex)
+
+
+#all_complete<-complete.cases(mydata)
+#mydata<-mydata[all_complete==TRUE,]
+#write.csv (mydata,"mydata.csv")
+
+# mydata.csv was utilized to extract percentiles and z-scores for BMI using the SAS program for 2000 CDC Growth Charts
+#https://www.cdc.gov/nccdphp/dnpao/growthcharts/resources/sas.htm
+#Load the results of the bmi zscores
+bmi_cdc<-read.csv("BMI_95p_cdc.csv")
+
+
+
+#########################################
+#
+# Recode income to mean income bins
+#
+########################################
+income_recoded = nda18$demo_comb_income_v2b[blIND]
+income_recoded[income_recoded == 777] <- NA
+income_recoded[income_recoded == 999] <- NA
+income_recoded[income_recoded == 1] <- 2500
+income_recoded[income_recoded == 2] <- 8500
+income_recoded[income_recoded == 3] <- 14000
+income_recoded[income_recoded == 4] <- 20500
+income_recoded[income_recoded == 5] <- 30000
+income_recoded[income_recoded == 6] <- 42500
+income_recoded[income_recoded == 7] <- 62500
+income_recoded[income_recoded == 8] <- 87500
+income_recoded[income_recoded == 9] <- 150000
+income_recoded[income_recoded == 10] <- 250000
+
+
+######## Poverty index#####
+###########################
+poverty_thresh <-nda18$demo_roster_p[blIND]
+
+poverty_thresh [which(poverty_thresh > 59)] <- NA
+poverty_thresh [which(poverty_thresh == 0)] <- NA
+poverty_thresh [which(poverty_thresh == 1)] <- 12060
+poverty_thresh [which(poverty_thresh == 2)] <- 16240
+poverty_thresh [which(poverty_thresh == 3)] <- 20420
+poverty_thresh [which(poverty_thresh == 4)] <- 24600
+poverty_thresh [which(poverty_thresh == 5)] <- 28780
+poverty_thresh [which(poverty_thresh == 6)] <- 32960
+poverty_thresh [which(poverty_thresh == 7)] <- 37140
+poverty_thresh [which(poverty_thresh == 8)] <- 41320
+poverty_thresh [which(poverty_thresh == 9)] <- 45500
+poverty_thresh [which(poverty_thresh == 10)] <- 49680
+poverty_thresh [which(poverty_thresh == 11)] <- 53860
+poverty_thresh [which(poverty_thresh == 12)] <- 58040
+poverty_thresh [which(poverty_thresh == 13)] <- 62220
+poverty_thresh [which(poverty_thresh == 14)] <- 66400
+poverty_thresh [which(poverty_thresh == 15)] <- 70580
+poverty_thresh [which(poverty_thresh == 16)] <- 74760
+poverty_thresh [which(poverty_thresh == 17)] <- 78940
+poverty_thresh [which(poverty_thresh == 18)] <- 83120
+poverty_thresh [which(poverty_thresh == 19)] <- 87300
+
+
+poverty_index <-NA
+poverty_index <- (income_recoded/poverty_thresh)*100
+
+
+#########################
+# Economical Hardship
+#########################
+hardship1 <-as.numeric(nda18$demo_fam_exp1_v2b[blIND])
+hardship2 <-as.numeric(nda18$demo_fam_exp2_v2b[blIND])
+hardship3 <-as.numeric(nda18$demo_fam_exp3_v2b[blIND])
+hardship4 <-as.numeric(nda18$demo_fam_exp4_v2b[blIND])
+hardship5 <-as.numeric(nda18$demo_fam_exp5_v2b[blIND])
+hardship6 <-as.numeric(nda18$demo_fam_exp6_v2b[blIND])
+hardship7 <-as.numeric(nda18$demo_fam_exp7_v2b[blIND])
+
+hardship1[which(hardship1==1)]<-0
+hardship1[which(hardship1==2)]<-1
+hardship1[which(hardship1==3)]<-NA
+
+hardship2[which(hardship2==1)]<-0
+hardship2[which(hardship2==2)]<-1
+hardship2[which(hardship2==3)]<-NA
+
+hardship3[which(hardship3==1)]<-0
+hardship3[which(hardship3==2)]<-1
+hardship3[which(hardship3==3)]<-NA
+
+hardship4[which(hardship4==1)]<-0
+hardship4[which(hardship4==2)]<-1
+hardship4[which(hardship4==3)]<-NA
+
+hardship5[which(hardship5==1)]<-0
+hardship5[which(hardship5==2)]<-1
+hardship5[which(hardship5==3)]<-NA
+
+hardship6[which(hardship6==1)]<-0
+hardship6[which(hardship6==2)]<-1
+hardship6[which(hardship6==3)]<-NA
+
+hardship7[which(hardship7==1)]<-0
+hardship7[which(hardship7==2)]<-1
+hardship7[which(hardship7==3)]<-NA
+
+
+
+
+
+#hardship1 [which (hardship1== 777)]<-NA
+#hardship2 [which (hardship2== 777)]<-NA
+#hardship3 [which (hardship3== 777)]<-NA
+#hardship4 [which (hardship4== 777)]<-NA
+#hardship5 [which (hardship5== 777)]<-NA
+#hardship6 [which (hardship6== 777)]<-NA
+#hardship7 [which (hardship7== 777)]<-NA
+
+hardship_doctor <-as.factor(hardship6)
+hardship_dentist <-as.factor(hardship7)
+
+hardship_doctor_dentist <- NA
+hardship_doctor_dentist [which(hardship_doctor==1&hardship_dentist==0)] <- "Medical_Hardship"
+hardship_doctor_dentist [which(hardship_doctor==0&hardship_dentist==1)] <- "Dental_Hardship"
+hardship_doctor_dentist [which(hardship_doctor==0&hardship_dentist==0)] <- "None_Medical_Dental"
+hardship_doctor_dentist [which(hardship_doctor==1&hardship_dentist==1)] <- "Both_Medical_Dental"
+hardship_doctor_dentist <-as.factor(hardship_doctor_dentist)
+
+
+food_security <-NA
+medical_dental_access <-NA
+housing_security <-NA
+pay_utilities <- NA
+
+food_security <-hardship1
+food_security [which(hardship1==1)]<-0
+food_security [which(hardship1==0)]<-1
+
+medical_dental_access [which(hardship6==1 | hardship7==1)] <- 0
+medical_dental_access [which(hardship6==0 & hardship7==0)] <- 1
+
+housing_security [which(hardship3==1 | hardship4==1)] <- 0
+housing_security [which(hardship3==0 & hardship4==0)] <- 1
+
+pay_utilities [which(hardship2==1 | hardship5==1)] <- 0
+pay_utilities [which(hardship2==0 & hardship5==0)] <- 1
+
+total_security= food_security+medical_dental_access+housing_security+pay_utilities
+
+economic_df<-data.frame(food_security,pay_utilities,housing_security,medical_dental_access,total_security)
+
+######################################
+# PRENATAL 
+######################################
+
+
+prenatal_other_drug_use_pre <-NA
+prenatal_other_drug_use_post <-NA
+
+prenatal_other_drug_use_pre [which(as.character(nda18$devhx_8_tobacco_p[blIND])=="Yes"|
+                                     as.character(nda18$devhx_8_alcohol_p[blIND])=="Yes"| 
+                                     as.character(nda18$devhx_8_marijuana_p[blIND])=="Yes" |
+                                     as.character(nda18$devhx_8_coc_crack_p[blIND])=="Yes" |
+                                     as.character(nda18$devhx_8_her_morph_p[blIND])=="Yes" |
+                                     as.character(nda18$devhx_8_oxycont_p[blIND])=="Yes" |
+                                     as.character(nda18$devhx_8_other_drugs_p[blIND])=="Yes")] <-1
+
+prenatal_other_drug_use_pre [which(as.character(nda18$devhx_8_tobacco_p[blIND])=="No"&
+                                     as.character(nda18$devhx_8_alcohol_p[blIND])=="No"& 
+                                     as.character(nda18$devhx_8_marijuana_p[blIND])=="No" &
+                                     as.character(nda18$devhx_8_coc_crack_p[blIND])=="No" &
+                                     as.character(nda18$devhx_8_her_morph_p[blIND])=="No" &
+                                     as.character(nda18$devhx_8_oxycont_p[blIND])=="No" &
+                                     as.character(nda18$devhx_8_other_drugs_p[blIND])=="No")] <-0
+
+prenatal_other_drug_use_pre <- as.numeric(prenatal_other_drug_use_pre)
+
+prenatal_other_drug_use_post [which(as.character(nda18$devhx_9_tobacco_p[blIND])=="Yes"|
+                                     as.character(nda18$devhx_9_alcohol_p[blIND])=="Yes"| 
+                                     as.character(nda18$devhx_9_marijuana_p[blIND])=="Yes" |
+                                     as.character(nda18$devhx_9_coc_crack_p[blIND])=="Yes" |
+                                     as.character(nda18$devhx_9_her_morph_p[blIND])=="Yes" |
+                                     as.character(nda18$devhx_9_oxycont_p[blIND])=="Yes" |
+                                     as.character(nda18$devhx_9_other_drugs_p[blIND])=="Yes")] <-1
+
+prenatal_other_drug_use_post [which(as.character(nda18$devhx_9_tobacco_p[blIND])=="No"&
+                                     as.character(nda18$devhx_9_alcohol_p[blIND])=="No"& 
+                                     as.character(nda18$devhx_9_marijuana_p[blIND])=="No" &
+                                     as.character(nda18$devhx_9_coc_crack_p[blIND])=="No" &
+                                     as.character(nda18$devhx_9_her_morph_p[blIND])=="No" &
+                                     as.character(nda18$devhx_9_oxycont_p[blIND])=="No" &
+                                     as.character(nda18$devhx_9_other_drugs_p[blIND])=="No")] <-0
+
+prenatal_other_drug_use_post <- as.numeric(prenatal_other_drug_use_post)
+
+
+prenatal_drug_use<-NA
+prenatal_drug_use [nda18$subjectid]<-999
+prenatal_drug_use_sum<-prenatal_other_drug_use_pre+prenatal_other_drug_use_post
+prenatal_drug_use [prenatal_drug_use_sum==0]<-0 
+prenatal_drug_use [prenatal_drug_use_sum==1]<-1
+prenatal_drug_use [prenatal_drug_use_sum==2]<-2
+prenatal_drug_use [prenatal_drug_use==999]<-NA
+
+
+##########
+# Prenatal Conditions
+###################
+
+prenatal_cond_b <-as.character(nda18$devhx_10b_heavy_bleeding_p[blIND])
+prenatal_cond_b [which(prenatal_cond_b=="Don't know")] <- NA
+prenatal_cond_b [which(prenatal_cond_b=="No")] <- 0
+prenatal_cond_b [which(prenatal_cond_b=="Yes")] <- 1
+prenatal_cond_b<-as.numeric(prenatal_cond_b)
+
+
+prenatal_cond_c <-as.character(nda18$devhx_10c_eclampsia_p[blIND])
+prenatal_cond_c [which(prenatal_cond_c=="Don't know")] <- NA
+prenatal_cond_c [which(prenatal_cond_c=="No")] <- 0
+prenatal_cond_c [which(prenatal_cond_c=="Yes")] <- 1
+prenatal_cond_c<-as.numeric(prenatal_cond_c)
+
+prenatal_cond_d <-as.character(nda18$devhx_10d_gall_bladder_p[blIND])
+prenatal_cond_d [which(prenatal_cond_d=="Don't know")] <- NA
+prenatal_cond_d [which(prenatal_cond_d=="No")] <- 0
+prenatal_cond_d [which(prenatal_cond_d=="Yes")] <- 1
+prenatal_cond_d<-as.numeric(prenatal_cond_d)
+
+prenatal_cond_e <-as.character(nda18$devhx_10e_persist_proteinuria_p[blIND])
+prenatal_cond_e [which(prenatal_cond_e=="Don't know")] <- NA
+prenatal_cond_e [which(prenatal_cond_e=="No")] <- 0
+prenatal_cond_e [which(prenatal_cond_e=="Yes")] <- 1
+prenatal_cond_e<-as.numeric(prenatal_cond_e)
+
+prenatal_cond_f <-as.character(nda18$devhx_10f_rubella_p[blIND])
+prenatal_cond_f [which(prenatal_cond_f=="Don't know")] <- NA
+prenatal_cond_f [which(prenatal_cond_f=="No")] <- 0
+prenatal_cond_f [which(prenatal_cond_f=="Yes")] <- 1
+prenatal_cond_f<-as.numeric(prenatal_cond_f)
+
+prenatal_cond_g <-as.character(nda18$devhx_10g_severe_anemia_p[blIND])
+prenatal_cond_g [which(prenatal_cond_g=="Don't know")] <- NA
+prenatal_cond_g [which(prenatal_cond_g=="No")] <- 0
+prenatal_cond_g [which(prenatal_cond_g=="Yes")] <- 1
+prenatal_cond_g<-as.numeric(prenatal_cond_g)
+
+prenatal_cond_h <-as.character(nda18$devhx_10h_urinary_infections_p[blIND])
+prenatal_cond_h [which(prenatal_cond_h=="Don't know")] <- NA
+prenatal_cond_h [which(prenatal_cond_h=="No")] <- 0
+prenatal_cond_h [which(prenatal_cond_h=="Yes")] <- 1
+prenatal_cond_h<-as.numeric(prenatal_cond_h)
+
+prenatal_cond_i <-as.character(nda18$devhx_10i_diabetes_p[blIND])
+prenatal_cond_i [which(prenatal_cond_i=="Don't know")] <- NA
+prenatal_cond_i [which(prenatal_cond_i=="No")] <- 0
+prenatal_cond_i [which(prenatal_cond_i=="Yes")] <- 1
+prenatal_cond_i<-as.numeric(prenatal_cond_i)
+
+prenatal_cond_j <-as.character(nda18$devhx_10j_high_blood_press_p[blIND])
+prenatal_cond_j [which(prenatal_cond_j=="Don't know")] <- NA
+prenatal_cond_j [which(prenatal_cond_j=="No")] <- 0
+prenatal_cond_j [which(prenatal_cond_j=="Yes")] <- 1
+prenatal_cond_j<-as.numeric(prenatal_cond_j)
+
+prenatal_cond_k <-as.character(nda18$devhx_10k_problems_placenta_p[blIND])
+prenatal_cond_k [which(prenatal_cond_k=="Don't know")] <- NA
+prenatal_cond_k [which(prenatal_cond_k=="No")] <- 0
+prenatal_cond_k [which(prenatal_cond_k=="Yes")] <- 1
+prenatal_cond_k<-as.numeric(prenatal_cond_k)
+
+prenatal_cond_l <-as.character(nda18$devhx_10l_accident_injury_p[blIND])
+prenatal_cond_l [which(prenatal_cond_l=="Don't know")] <- NA
+prenatal_cond_l [which(prenatal_cond_l=="No")] <- 0
+prenatal_cond_l [which(prenatal_cond_l=="Yes")] <- 1
+prenatal_cond_l<-as.numeric(prenatal_cond_l)
+
+prenatal_cond_m <-as.character(nda18$devhx_10m_other_p[blIND])
+prenatal_cond_m [which(prenatal_cond_m=="Don't know")] <- NA
+prenatal_cond_m [which(prenatal_cond_m=="No")] <- 0
+prenatal_cond_m [which(prenatal_cond_m=="Yes")] <- 1
+prenatal_cond_m<-as.numeric(prenatal_cond_m)
+
+
+  prenatal_cond <- prenatal_cond_b+prenatal_cond_c+prenatal_cond_d+prenatal_cond_e+prenatal_cond_f+prenatal_cond_g+prenatal_cond_h+prenatal_cond_i+prenatal_cond_j+prenatal_cond_k+prenatal_cond_l+prenatal_cond_m
+
+# Planned pregnancy
+planned_preg <- as.character(nda18$devhx_6_pregnancy_planned_p[blIND])
+planned_preg [which(planned_preg=="Don't know")] <- NA
+planned_preg [which(planned_preg=="No")] <- 0
+planned_preg [which(planned_preg=="Yes")] <- 1
+planned_preg<-as.numeric(planned_preg)
+
+
+# Gest Age
+premature<-as.character(nda18$devhx_12a_born_premature_p[blIND])
+
+weeks_preterm <-as.character(nda18$devhx_12_weeks_premature_p[blIND])
+weeks_preterm[which (weeks_preterm=="Don't know")]<-NA
+weeks_preterm[which (weeks_preterm=="Greater than 12")]<-13
+weeks_preterm[premature=="No"]<-0
+weeks_preterm[which (premature=="Don't know")] <- NA
+weeks_preterm<-as.numeric(weeks_preterm)
+
+GestAge<- NA
+GestAge<-40-weeks_preterm
+
+#Based on Talge et al (2014) less than 10th percentile for GA by Sex
+#Small for Gestational age
+birth_oz<-NA
+birth_lbs<-NA
+birth_weight<-NA
+birth_lbs<-nda18$devhx_2_birth_wt_lbs_p[blIND]
+birth_oz<-nda18$devhx_2b_birth_wt_oz_p[blIND]
+
+birth_only_lbs<-NA
+birth_only_lbs[which(birth_lbs>=0&birth_oz>=0)]<-0
+#Subjects that only reported pounts
+birth_only_lbs[which(birth_lbs>=0&is.na(birth_oz))]<-1
+
+birth_weight<-NA
+birth_weight[which(birth_only_lbs==0)]<-birth_lbs[which(birth_only_lbs==0)]+birth_oz[which(birth_only_lbs==0)]/16
+birth_weight[which(birth_only_lbs==1)]<-birth_lbs[which(birth_only_lbs==1)]
+#Censor 14lbs baby born before 35 weeks 
+birth_weight[which(birth_weight>10 & GestAge==34)]<-NA
+
+
+birth_weight_kg<-birth_weight*0.453592
+
+maternal_age_birth <- nda18$devhx_3_age_at_birth_mother_p[blIND]
+
+prenatal_df <-data.frame(prenatal_cond,planned_preg,maternal_age_birth,prenatal_drug_use,GestAge,birth_weight_kg)
+
+###################################
+#SOCIAL (ACE's)  
+######################################
+# History of traumatic event present 
+traumatic_event<-nda18$ksads_21_134_p[blIND]
+
+# Either parent has been the kind of person to not be able to hold a job or get in trouble
+maternal_trouble_criminal <- as.character(nda18$famhx_q9d_trouble_p[blIND])
+maternal_trouble_criminal[which(maternal_trouble_criminal=="Don't know")]<- NA
+maternal_trouble_criminal[which(maternal_trouble_criminal=="Yes")]<- 1
+maternal_trouble_criminal[which(maternal_trouble_criminal=="No")]<- 0
+
+
+paternal_trouble_criminal <- as.character(nda18$famhx_q9a_trouble_p[blIND])
+paternal_trouble_criminal[which(paternal_trouble_criminal=="Don't know")]<- NA
+paternal_trouble_criminal[which(paternal_trouble_criminal=="Yes")]<- 1
+paternal_trouble_criminal[which(paternal_trouble_criminal=="No")]<- 0
+
+bio_prnt_trouble_criminal<-NA
+bio_prnt_trouble_criminal [complete.cases(nda18$src_subject_id[blIND])]<-0
+bio_prnt_trouble_criminal[which(maternal_trouble_criminal == 1 | paternal_trouble_criminal==1)]<-1
+
+
+family_conflict <- nda18$fes_y_ss_fc[blIND]
+
+crpbi_ss_studycaregiver <-nda18$crpbi_ss_studycaregiver[blIND]
+
+#recode to numeric scale 
+neighb_safety_y <-as.character(nda18$neighb_phenx[blIND])
+neighb_safety_y[which(neighb_safety_y=="Strongly Agree")]<- 5
+neighb_safety_y[which(neighb_safety_y=="Agree")]<- 4
+neighb_safety_y[which(neighb_safety_y=="Neutral (neither agree nor disagree)")]<- 3
+neighb_safety_y[which(neighb_safety_y=="Disagree")]<- 2
+neighb_safety_y[which(neighb_safety_y=="Strongly Disagree")]<- 1
+neighb_safety_y<-as.numeric(neighb_safety_y)
+
+school_risk_phenx_2<- as.character(nda18$school_risk_phenx_2[blIND])
+school_risk_phenx_2 [which(school_risk_phenx_2=="NO!")]<- 1
+school_risk_phenx_2 [which(school_risk_phenx_2=="no")]<- 2
+school_risk_phenx_2 [which(school_risk_phenx_2=="yes")]<- 3
+school_risk_phenx_2 [which(school_risk_phenx_2=="YES!")]<- 4
+
+school_risk_phenx_3<- as.character(nda18$school_risk_phenx_3[blIND])
+school_risk_phenx_3 [which(school_risk_phenx_3=="NO!")]<- 1
+school_risk_phenx_3 [which(school_risk_phenx_3=="no")]<- 2
+school_risk_phenx_3 [which(school_risk_phenx_3=="yes")]<- 3
+school_risk_phenx_3 [which(school_risk_phenx_3=="YES!")]<- 4
+
+school_risk_phenx_4<- as.character(nda18$school_risk_phenx_4[blIND])
+school_risk_phenx_4 [which(school_risk_phenx_4=="NO!")]<- 1
+school_risk_phenx_4 [which(school_risk_phenx_4=="no")]<- 2
+school_risk_phenx_4 [which(school_risk_phenx_4=="yes")]<- 3
+school_risk_phenx_4 [which(school_risk_phenx_4=="YES!")]<- 4
+
+school_risk_phenx_5<- as.character(nda18$school_risk_phenx_5[blIND])
+school_risk_phenx_5 [which(school_risk_phenx_5=="NO!")]<- 1
+school_risk_phenx_5 [which(school_risk_phenx_5=="no")]<- 2
+school_risk_phenx_5 [which(school_risk_phenx_5=="yes")]<- 3
+school_risk_phenx_5 [which(school_risk_phenx_5=="YES!")]<- 4
+
+school_risk_phenx_6<- as.character(nda18$school_risk_phenx_6[blIND])
+school_risk_phenx_6 [which(school_risk_phenx_6=="NO!")]<- 1
+school_risk_phenx_6 [which(school_risk_phenx_6=="no")]<- 2
+school_risk_phenx_6 [which(school_risk_phenx_6=="yes")]<- 3
+school_risk_phenx_6 [which(school_risk_phenx_6=="YES!")]<- 4
+
+school_risk_phenx_7<- as.character(nda18$school_risk_phenx_7[blIND])
+school_risk_phenx_7 [which(school_risk_phenx_7=="NO!")]<- 1
+school_risk_phenx_7 [which(school_risk_phenx_7=="no")]<- 2
+school_risk_phenx_7 [which(school_risk_phenx_7=="yes")]<- 3
+school_risk_phenx_7 [which(school_risk_phenx_7=="YES!")]<- 4
+
+school_risk_phenx_2<-as.numeric(school_risk_phenx_2)
+school_risk_phenx_3<-as.numeric(school_risk_phenx_3)
+school_risk_phenx_4<-as.numeric(school_risk_phenx_4)
+school_risk_phenx_5<-as.numeric(school_risk_phenx_5)
+school_risk_phenx_6<-as.numeric(school_risk_phenx_6)
+school_risk_phenx_7<-as.numeric(school_risk_phenx_7)
+
+
+positive_school_env <-school_risk_phenx_2+school_risk_phenx_3+school_risk_phenx_4+school_risk_phenx_5+school_risk_phenx_6+school_risk_phenx_7
+
+
+school_risk_phenx_15<- as.character(nda18$school_risk_phenx_15[blIND])
+school_risk_phenx_15 [which(school_risk_phenx_15=="NO!")]<- 4
+school_risk_phenx_15 [which(school_risk_phenx_15=="no")]<- 3
+school_risk_phenx_15 [which(school_risk_phenx_15=="yes")]<- 2
+school_risk_phenx_15 [which(school_risk_phenx_15=="YES!")]<- 1
+
+school_risk_phenx_17<- as.character(nda18$school_risk_phenx_17[blIND])
+school_risk_phenx_17 [which(school_risk_phenx_17=="NO!")]<- 4
+school_risk_phenx_17 [which(school_risk_phenx_17=="no")]<- 3
+school_risk_phenx_17 [which(school_risk_phenx_17=="yes")]<- 2
+school_risk_phenx_17 [which(school_risk_phenx_17=="YES!")]<- 1
+
+school_risk_phenx_15<-as.numeric(school_risk_phenx_15)
+school_risk_phenx_17<-as.numeric(school_risk_phenx_17)
+
+school_engagement <- school_risk_phenx_15+school_risk_phenx_17
+
+asr_total_prbl_p=nda18$asr_scr_totprob_t[blIND]
+
+duo_parent_households<-as.character(nda18$demo_prnt_prtnr_v2b[blIND])
+duo_parent_households[duo_parent_households=="Refuse to answer"]<-NA
+duo_parent_households[duo_parent_households=="No"]<-0
+duo_parent_households[duo_parent_households=="Yes"]<-1
+duo_parent_households<-as.numeric(duo_parent_households)
+
+community_df <-data.frame(neighb_safety_y,positive_school_env,school_engagement)
+
+
+parental_monitoring_q1<-as.character(nda18$parental_monitoring_q1[blIND])
+parental_monitoring_q1[which(parental_monitoring_q1=="Never")]<-1
+parental_monitoring_q1[which(parental_monitoring_q1=="Almost Never")]<-2
+parental_monitoring_q1[which(parental_monitoring_q1=="Sometimes")]<-3
+parental_monitoring_q1[which(parental_monitoring_q1=="Often")]<-4
+parental_monitoring_q1[which(parental_monitoring_q1=="Always or Almost Always")]<-5
+
+parental_monitoring_q2<-as.character(nda18$parental_monitoring_q2[blIND])
+parental_monitoring_q2[which(parental_monitoring_q2=="Never")]<-1
+parental_monitoring_q2[which(parental_monitoring_q2=="Almost Never")]<-2
+parental_monitoring_q2[which(parental_monitoring_q2=="Sometimes")]<-3
+parental_monitoring_q2[which(parental_monitoring_q2=="Often")]<-4
+parental_monitoring_q2[which(parental_monitoring_q2=="Always or Almost Always")]<-5
+
+parental_monitoring_q3<-as.character(nda18$parental_monitoring_q3[blIND])
+parental_monitoring_q3[which(parental_monitoring_q3=="Never")]<-1
+parental_monitoring_q3[which(parental_monitoring_q3=="Almost Never")]<-2
+parental_monitoring_q3[which(parental_monitoring_q3=="Sometimes")]<-3
+parental_monitoring_q3[which(parental_monitoring_q3=="Often")]<-4
+parental_monitoring_q3[which(parental_monitoring_q3=="Always or Almost Always")]<-5
+
+parental_monitoring_q4<-as.character(nda18$parental_monitoring_q4[blIND])
+parental_monitoring_q4[which(parental_monitoring_q4=="Never")]<-1
+parental_monitoring_q4[which(parental_monitoring_q4=="Almost Never")]<-2
+parental_monitoring_q4[which(parental_monitoring_q4=="Sometimes")]<-3
+parental_monitoring_q4[which(parental_monitoring_q4=="Often")]<-4
+parental_monitoring_q4[which(parental_monitoring_q4=="Always or Almost Always")]<-5
+
+parental_monitoring_q5<-as.character(nda18$parental_monitoring_q5[blIND])
+parental_monitoring_q5[which(parental_monitoring_q5=="Never")]<-1
+parental_monitoring_q5[which(parental_monitoring_q5=="Almost Never")]<-2
+parental_monitoring_q5[which(parental_monitoring_q5=="Sometimes")]<-3
+parental_monitoring_q5[which(parental_monitoring_q5=="Often")]<-4
+parental_monitoring_q5[which(parental_monitoring_q5=="Always or Almost Always")]<-5
+
+
+parental_monitoring_youth<-as.numeric(parental_monitoring_q1)+as.numeric(parental_monitoring_q2)+as.numeric(parental_monitoring_q3)+as.numeric(parental_monitoring_q4)+as.numeric(parental_monitoring_q5)
+
+high.educ=as.numeric(nda18$high.educ.bl[blIND])
+
+parenting_df <-data.frame(high.educ,crpbi_ss_studycaregiver,parental_monitoring_youth,duo_parent_households)
+
+###############
+# Physical
+#############
+#Reverse code sleep so that higher score means more sleep hours
+range_sleep<-as.character(nda18$sleep_1_p[blIND])
+range_sleep[which(range_sleep=="Less than 5 hours")]<-1
+range_sleep[which(range_sleep=="5-7 hours")]<-2
+range_sleep[which(range_sleep=="7-8 hours")]<-3
+range_sleep[which(range_sleep=="8-9 hours")]<-4
+range_sleep[which(range_sleep=="9-11 hours")]<-5
+range_sleep<-as.numeric(range_sleep)
+
+physical_df<-data.frame(range_sleep)       
+
+##############
+# Adverse Childhood Experiences 
+#################
+
+parent_negative_behav<-(scale(asr_total_prbl_p)+scale(bio_prnt_trouble_criminal))/2
+
+ace_df<-data.frame(family_conflict, traumatic_event, parent_negative_behav)
+
+
+
+###### See how many non-NA values in all variables ####
+prenatal_df %>%
+  summarize_all(funs(sum(is.na(.))))
+
+parenting_df %>%
+  summarize_all(funs(sum(is.na(.))))
+
+economic_df %>%
+  summarize_all(funs(sum(is.na(.))))
+
+ace_df %>%
+  summarize_all(funs(sum(is.na(.))))
+
+community_df %>%
+  summarize_all(funs(sum(is.na(.))))
+
+physical_df %>%
+  summarize_all(funs(sum(is.na(.))))
+
+sex_recoded <- as.character(nda18$sex[blIND])
+sex_recoded[which(sex_recoded=="M")]<-0
+sex_recoded[which(sex_recoded=="F")]<-1
+sex_recoded<-as.factor(sex_recoded)
+
+
+race.ethnicity <- as.character(nda18$race.4level[blIND])
+race.ethnicity [which(as.character(nda18$demo_ethn_p[blIND])=="Yes")]<-"Hispanic"
+race.ethnicity<-factor(race.ethnicity, levels=c("White","Hispanic","Black","Asian","Other/Mixed"))
+race.ethnicity<-relevel (race.ethnicity, ref="White")
+
+# All demographic and covariate vars
+other_df <-data.frame(src_subject_id=nda18$src_subject_id[blIND],income_recoded,race.ethnicity,abcd_site=nda18$abcd_site[blIND],rel_family_id=nda18$rel_family_id[blIND],age=nda18$age[blIND],sex=sex_recoded,scannerID=nda18$mri_info_device.serial.number[blIND],brain_qc=nda18$fsqc_qc[blIND],nih_fluid=nda18$nihtbx_fluidcomp_uncorrected[blIND],nih_cryst=nda18$nihtbx_cryst_uncorrected[blIND],area_total=nda18$smri_area_cort.desikan_total[blIND],nih_total=nda18$nihtbx_totalcomp_uncorrected[blIND],poverty_index) 
+
+other_df %>%
+  summarize_all(funs(sum(is.na(.))))
+
+#All complete cases including all demographics and covariates and good freesurfer 
+all_df_temp<-cbind.data.frame(prenatal_df,community_df,economic_df,physical_df,parenting_df,ace_df,other_df)
+
+#Merge the bmiz data
+bmiz<-data.frame(src_subject_id=bmi_cdc$src_subject_id, bmiz=bmi_cdc$bmiz)
+bmiz$bmiz[which(bmiz$bmiz<(-4))]<-NA
+all_df<-merge(all_df_temp,bmiz,by="src_subject_id")
+
+
+all_df<-subset(all_df,all_df$brain_qc=="pass")
+
+#To Include only singletons
+#all_df<-subset(all_df,nda18$devhx_5_twin_p[blIND]=="No")
+
+#Sample only 1 sib from families
+#famfreq<-plyr::count(other_df,"rel_family_id")
+#fam1<-famfreq[famfreq$freq==1,1]
+#fam2<-famfreq[famfreq$freq==2,1]
+#fam3<-famfreq[famfreq$freq==3,1]
+#fam5<-famfreq[famfreq$freq==5,1]
+
+#set.seed(115)
+#r1<-fam1
+#r2<-sample(fam2, size=floor(length(fam2)/2), replace=FALSE)
+#r3<-sample(fam3, size=floor(length(fam3)/2), replace=FALSE)
+#r5<-sample(fam5, size=floor(length(fam3)/2), replace=FALSE)
+#uniqueIND_1<-append(r1,append(r2,append(r3,fam5)))
+
+#sibs_excluded<-is.element(other_df$rel_family_id, uniqueIND_1)
+#ll_df<-all_df[sibs_excluded,]
+##########################################
+complete_df<-complete.cases(all_df)
+all_df_complete<-all_df[complete_df==TRUE,]
+
+#####SPLIT HALF#######
+set.seed(123)
+smp_siz = floor(0.50*nrow(all_df_complete))
+set_ses = sample(seq_len(nrow(all_df_complete)),size = smp_siz) 
+train_ses=all_df_complete[set_ses,]
+test_ses=all_df_complete[-c(set_ses),] 
+
+# Run below to reset 
+#all_df_complete<-test_ses
+
+COMMUNITY<-as.matrix(cbind(neighb_safety_y=all_df_complete$neighb_safety_y,positive_school_env=all_df_complete$positive_school_env,school_engagement=all_df_complete$school_engagement))
+
+ECONOMIC<-as.matrix(cbind(food_security=all_df_complete$food_security,pay_utilities=all_df_complete$pay_utilities,housing_security=all_df_complete$housing_security,medical_dental_access=all_df_complete$medical_dental_access))
+                          
+PERINATAL<-as.matrix(cbind(prenatal_cond=all_df_complete$prenatal_cond,planned_preg=all_df_complete$planned_preg,maternal_age_birth=all_df_complete$maternal_age_birth,prenatal_drug_use=all_df_complete$prenatal_drug_use,GestAge=all_df_complete$GestAge,birth_weight_kg=all_df_complete$birth_weight_kg))
+
+PHYSIOLOGICAL<-as.matrix(cbind(range_sleep=all_df_complete$range_sleep,bmiz=all_df_complete$bmiz))
+
+PARENTING<-as.matrix(cbind(high.educ=all_df_complete$high.educ,crpbi_ss_studycaregiver=all_df_complete$crpbi_ss_studycaregiver,parental_monitoring_youth=all_df_complete$parental_monitoring_youth,duo_parent_households=all_df_complete$duo_parent_households))
+
+ACEs<-as.matrix(cbind(family_conflict=all_df_complete$family_conflict,traumatic_event=all_df_complete$traumatic_event,parent_negative_behav=all_df_complete$parent_negative_behav))
+
+
+#Labels for the variables 
+physical_vars<-c("Sufficient Sleep","BMIz")
+
+community_vars<-c("Youth Neighborhood Safety","Youth Positive School Environment", "Youth School Engagement")
+
+ace_vars<-c("Youth Family Conflict","History of Traumatic Event","Parental Poor Adaptive Functioning")
+
+parenting_vars<-c("Highest Parent Education","Youth Total Caregiver Acceptance","Youth Parental Monitoring","Duo Parent Households")
+#parenting_vars<-c("HS Degree or Above","Some College or Above","Bachelors Degree or Above","Post Graduate Degree","Youth Total Caregiver Acceptance","Youth Parental Monitoring","Duo Parent Households")
+
+prenatal_vars<-c("Total Prenatal Conditions", "Planned Pregnancy", "Maternal Age at Birth","History of Prenatal Substance Use","Gestational Age","Birth Weight")
+
+economic_vars<-c("Food Security","Ability to Pay Bills", "Housing Security","Access to Medical/Dental")
+#economic_vars<-c("Food Security","Able to Pay Bills","Housing Security","Access to Medical & Dental")
+
+#plot_df=data.frame(range_sleep=all_df_complete$range_sleep,BMIz=all_df_complete$bmiz,prenatal_cond=all_df_complete$prenatal_cond,planned_preg=all_df_complete$planned_preg,maternal_age_birth=all_df_complete$maternal_age_birth,prenatal_drug_use=all_df_complete$prenatal_drug_use,GestAge=all_df_complete$GestAge,birth_weight=all_df_complete$birth_weight)
+#pdf (paste0("ABCD_SES_plots.pdf"))
+#plot(plot_df)
+#dev.off()
+
+```
+
+```{r}
+## Residuals for covariates age, sex, race/ethnicity to run GFA with residualized variables
+
+res_df<-NA
+res_df<-data.frame(cbind(age=all_df_complete$age,sex=all_df_complete$sex,race.ethnicity=all_df_complete$race.ethnicity,scannerID=all_df_complete$scannerID,rel_family_id=all_df_complete$rel_family_id, COMMUNITY, ECONOMIC,PERINATAL,PHYSIOLOGICAL, PARENTING,ACEs))
+
+my_vars<-names(res_df[,-c(1:5)])
+
+res_mat<-matrix(nrow=length(all_df_complete$race.ethnicity),ncol=length(my_vars))
+my_col<-1
+
+for (var in my_vars){
+my_model <- gamm4 (as.formula(paste(var,"age+sex+race.ethnicity",sep=" ~ ")), random = ~(1|scannerID/rel_family_id), data =res_df)
+my_res<-residuals(my_model$gam)
+res_mat[,my_col]<-my_res
+my_col<-my_col+1
+
+}
+
+#MY <- list(PERINATAL,ACEs,PARENTING,PHYSIOLOGICAL,COMMUNITY,ECONOMIC)
+PERINATAL_r<-res_mat[,8:13]
+colnames(PERINATAL_r)<-colnames(PERINATAL)
+
+ACEs_r<-res_mat[,20:22]
+colnames(ACEs_r)<-colnames(ACEs)
+
+PARENTING_r<-res_mat[,16:19]
+colnames(PARENTING_r)<-colnames(PARENTING)
+
+PHYSIOLOGICAL_r<-res_mat[,14:15]
+colnames(PHYSIOLOGICAL_r)<-colnames(PHYSIOLOGICAL)
+
+COMMUNITY_r<-res_mat[,1:3]
+colnames(COMMUNITY_r)<-colnames(COMMUNITY)
+
+ECONOMIC_r<-res_mat[,4:7]
+colnames(ECONOMIC_r)<-colnames(ECONOMIC)
+
+```
+
+
+```{r}
+# Correlation matrix of factors 
+
+
+my_df <-data.frame(ACEs,PERINATAL,ECONOMIC,PARENTING,PHYSIOLOGICAL,COMMUNITY)
+
+colnames(my_df)<-c(ace_vars, prenatal_vars, economic_vars,parenting_vars,physical_vars,community_vars)
+#pdf(paste0(mydir,"correlation.pdf"))
+cormat<-round(cor(my_df,method=c("spearman"),use="pairwise.complete.obs"),2)
+head(cormat)
+ggcorrplot(cormat, hc.order = TRUE, type = "lower",title="Proximal Measures in the Broader Socioeconomic Context",lab = TRUE,lab_size = 2,colors = c("blue", "white", "red"))
+#dev.of
+```
+
+  
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
