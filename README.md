@@ -14,7 +14,7 @@ latent_factor_ss_perinatal:	Latent factor for perinatal health.
 
 These three latent factors were derived with baseline data with the ABCD 2.0.1 release for an N = 8,158 subjects who had complete available data for all of the measures of interest.  Details are described in Gonzalez et. al. (2019 preprint).
 
-We selected 22 variables thought to be proximal measures of the broader socioeconomic context experienced by children.  We grouped the 22 variables into the categories of economic, social, community, adverse childhood experiences, physiological and perinatal well-being.  The 22 variables were subjected to a Group Factor Analysis using the R package ‘GFA’ (Klami, et al., 2014).  Code was adapted from publicly available scripts for a GFA analyses with ABCD data (Paulus, et al., 2019).
+We selected 22 variables thought to be proximal measures of the broader socioeconomic context experienced by children.  We grouped the 22 variables into the categories of economic, social, community, adverse childhood experiences, physiological and perinatal well-being.  The 22 variables were subjected to a Group Factor Analysis using the R package ‘GFA’ (Klami, et al., 2015).  Code was adapted from publicly available scripts for a GFA analyses with ABCD data (Paulus, et al., 2019).
 
 Three separate and orthogonal latent factors were extracted, overall accounting for ~26% of the variance among the 22 variables.  The variables are described in detail in the supplementary material in Gonzalez et. al. (2019 preprint).  To test the stability and robustness of the latent factors, we completed 10 different iterations of the GFA.  Robust latent factors were chosen based on latent factor loadings that met a 0.9 correlation threshold across all 10 iterations.  Robust factor loadings across all 10 GFA iterations were averaged.  Separate robust GFAs were examined in split-half samples to test replication of the latent factor loadings.  Robust GFA latent factors accounting for more than 5% of the GFA variance were chosen.   
 
@@ -44,7 +44,7 @@ References
 1.	Gonzalez, M. R., Palmer, C. E., Uban, K. A., Jernigan, T. L., Thompson, W. K., & Sowell, E. R. (2019). Economic, social, and physiological resilience predict brain structure and cognitive performance in 9-10-year-old children. bioRxiv, 852988.
 https://www.biorxiv.org/content/10.1101/852988v1
 
-2.	Klami, A., Virtanen, S., Leppäaho, E., & Kaski, S. (2014). Group factor analysis. IEEE transactions on neural networks and learning systems, 26(9), 2136-2147.
+2.	Klami, A., Virtanen, S., Leppäaho, E., & Kaski, S. (2015). Group factor analysis. IEEE transactions on neural networks and learning systems, 26(9), 2136-2147.
 
 3.	Paulus, M. P., Squeglia, L. M., Bagot, K., Jacobus, J., Kuplicki, R., Breslin, F. J., ... & Tapert, S. F. (2019). Screen media activity and brain structure in youth: Evidence for diverse structural correlation networks from the ABCD study. Neuroimage, 185, 140-153.
 
