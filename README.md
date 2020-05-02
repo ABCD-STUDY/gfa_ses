@@ -1,5 +1,5 @@
 # gfa_ses
-GFA for SES measures on ABCD 2.0.1
+Group factor analysis for socioeconomic measures, first released in ABCD 3.0 (derived from ABCD 2.0.1 data).
 
 Author: Marybel Robledo Gonzalez
 Date: April 30, 2020
